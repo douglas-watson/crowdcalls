@@ -7,6 +7,9 @@ admin.initializeApp(functions.config().firebase);
 // // Start writing Firebase Functions
 // // https://firebase.google.com/docs/functions/typescript
 //
+// export const helloWorld = functions.https.onRequest((request, response) => {
+//  response.send("Hello from Firebase!");
+// });
 
 export const welcomeCall = functions.https.onRequest(async (request, response) => {
     const voiceResponse = new twilio.twiml.VoiceResponse();
@@ -17,4 +20,9 @@ export const welcomeCall = functions.https.onRequest(async (request, response) =
     voiceResponse.say({ voice: 'alice', language: 'fr-CA' }, 'Bienvenue. Le future est radieux.');
     voiceResponse.stop();
     return response.contentType('text/xml').send(voiceResponse.toString());
+});
+
+export const apiTest = functions.https.onRequest((request, response) => {
+  const apiKey = functions.config().twilio.key
+  response.send(`My API key is ${apiKey}.`);
 });
