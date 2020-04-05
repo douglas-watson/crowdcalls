@@ -28,6 +28,26 @@ Install npm dependencies
     cd functions/
     npm install
 
+Serve the functions locally for development:
+
+    firebase serve --only functions
+
+Once you are happy with your new code, push them to the server:
+
+    firebase deploy
+
+## Troubleshooting
+
+If requests to the firestore systematically fail with the error "Error: Could
+not load the default credentials", then get the a "Service account key" json
+file from Douglas (don't generate a new one or it will break other's code). Place that file outside of the project tree, and store the location of that file in the FIREBASE_CRED environment variable:
+
+    # for example:
+    FIREBASE_CRED=$PWD/../crowdcalls-dev-adminsdk-xxxx.json
+
+Then this file will be loaded when serving functions locally.
+
+
 ## Admin
 
 Set up your account by adding your API key to firebase:

@@ -2,7 +2,19 @@ import * as functions from 'firebase-functions';
 import * as twilio from 'twilio';
 import * as admin from 'firebase-admin';
 
-admin.initializeApp(functions.config().firebase);
+// Workaround for Douglas's laptop who can never find the default credentials.
+// Store the location to the service account key json file 
+// (ask Douglas for a copy)
+if (process.env.FIREBASE_CRED) {
+  var serviceAccount = require(process.env.FIREBASE_CRED);
+
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: "https://crowdcalls-dev.firebaseio.com"
+  });
+} else {
+  admin.initializeApp();
+}
 
 const db = admin.firestore();
 
