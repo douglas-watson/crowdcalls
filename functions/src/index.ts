@@ -4,7 +4,7 @@ import * as admin from 'firebase-admin';
 import { ConferenceInstance } from 'twilio/lib/rest/api/v2010/account/conference';
 
 // Client is used to initiate calls. TwiML is used to instruct Twilio how to handle a call.
-const twilioClient = twilio("AC122ffd6de3a394ce41b9f5fd53370d10", "922e584f601eb49fe1326baf5a3b655f");
+const twilioClient = twilio(functions.config().twilio.account_sid, functions.config().twilio.key)
 
 admin.initializeApp();
 
