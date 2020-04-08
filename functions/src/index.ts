@@ -41,6 +41,8 @@ which in turn calls this function.
 
 */
 const dialVolunteer = (roomId: string, numbers: string[]) => {
+  const firstNumber = numbers[0]
+  const followingNumbers = numbers.slice(1, numbers.length).join("/")
 
   // Instructions for the outgoing call:
   const voiceResponse = new twilio.twiml.VoiceResponse()
@@ -53,22 +55,18 @@ const dialVolunteer = (roomId: string, numbers: string[]) => {
     })
     .say("Bonjour, une personne demande de l'aide sur la Hotline. Appuyez sur une touche pour prendre l'appel, ou raccrochez pour le refuser.")
 
-  // If this point is reached, call was not accepted nor hung up on.
+  // If this point is reached, call was not accepted nor hung up on. End call.
   voiceResponse.say("Vous n'avez pas pris cet appel.")
-  const followingNumbers = numbers.slice(1, numbers.length).join("/")
-  // TODO: check if redirect is the best way to handle this.
-
-  // TODO: this should now be redundant based on the face that statusCallBack is used.
-  voiceResponse.redirect(urlBuild("callNextVolunteer", roomId, followingNumbers))
-
-  // TODO: track state: to know if the initial callSid has been served.
 
   // Start outgoing call with those insctructions.
   return twilioClient.calls
     .create({
       twiml: voiceResponse.toString(),
       statusCallback: urlBuild("callNextVolunteer", roomId, followingNumbers),
-      to: '+41774165457',
+      statusCallbackMethod: 'GET',
+      statusCallbackEvent: ['completed'],
+      timeout: 15,
+      to: firstNumber,
       from: '+41215391000',
     })
 }
@@ -90,7 +88,7 @@ const endConference = (roomId: string) => {
  *  PUBLIC HANDLERS - CALL RECEIVING
  * * * * * * * * * * * * * * * * * * * */
 
-export const welcomeCall = functions.https.onRequest((request, response) => {
+export const welcomeCall = functions.https.onRequest(async (request, response) => {
   // Puts the caller in a conference room identified by the call Sid. Then calls
   // a list of volunteers one at a time, until one of them accepts the call by
   // entering a digit on their phone. The volunteer who accepts the call is connected
@@ -98,6 +96,13 @@ export const welcomeCall = functions.https.onRequest((request, response) => {
   const selectedNumbers = ['+41774165457', '+41774865315', '+41774165457']
 
   const callSid = request.body.CallSid === undefined && 'default' || request.body.CallSid
+
+  await db.collection('calls').doc(callSid).set({
+    initiated: true,
+    connected: false,
+    finished: false,
+  })
+
   const voiceResponse = new twilio.twiml.VoiceResponse()
 
   // Start calling volunteers.
@@ -119,13 +124,17 @@ export const welcomeCall = functions.https.onRequest((request, response) => {
     })
 });
 
+// TODO: if requester hangs up before volunteers join in, stop the calling chain!
+// export endCall = function.https.onRequest((request, response) => {
+// });
+
 
 /* This function is GET'd by twilio only after gathering input from a volunteer.
   Instruct twilio to connect the volunteer to the conference based on asker ID.
   This attribute is given as the GET request path:
   /joinVolunteerToConference/roomId
 */
-export const joinVolunteerToConference = functions.https.onRequest((request, response) => {
+export const joinVolunteerToConference = functions.https.onRequest(async (request, response) => {
 
   const voiceResponse = new twilio.twiml.VoiceResponse()
 
@@ -143,13 +152,23 @@ export const joinVolunteerToConference = functions.https.onRequest((request, res
     endConferenceOnExit: true,
   }, roomId)
 
+  await db.collection('calls').doc(roomId).update({
+    connected: true,
+  })
+
   return response.send(voiceResponse.toString())
 })
 
-/* callNextVolunteer is requested if the previous volunteer didn't accept the call.
+/* callNextVolunteer is requested when the previous volunteer call ends.
 
-At this point there are no active calls on the volunteer side. We either initiate
-a call with a new volunteer or close the conference room to end the Requester's call.
+It can end either because the person hung up, never picked up, an answering
+machine took the call, etc. If the person accepted the call, this fct is
+executed once the volunteer leaves the conference room. In this case we don't
+want to call another volunteer, the chain should end.
+
+At this point there are no active calls on the volunteer side. We either
+initiate a call with a new volunteer or close the conference room to end the
+Requester's call.
 */
 export const callNextVolunteer = functions.https.onRequest(async (request, response) => {
   // Expects a path in the format roomId/number1/number2/number3
@@ -163,6 +182,15 @@ export const callNextVolunteer = functions.https.onRequest(async (request, respo
 
   const roomId = pathAttributes[0]
   const selectedNumbers = pathAttributes.slice(1, pathAttributes.length)
+
+  const callDoc = await db.collection('calls').doc(roomId).get()
+  const data = callDoc.data()
+  console.log(data)
+  if (data && data.connected) {
+    console.log("Call has already been connected, end the call chain.")
+    // TODO: consider broadcasing message before closing: no volunteers available.
+    return response.send("Call already connected.")
+  }
 
   if (selectedNumbers.length === 0) {
     console.log("No numbers left to call, end of the line. Disconnecting room ID", roomId)
